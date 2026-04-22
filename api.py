@@ -1,15 +1,15 @@
 import uuid
 from dataclasses import asdict
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from coordinator import resolve_dispute
+from policies import get_policy
 from schemas import (
     AgentLog,
     DisputeCase,
     OrderRecord,
-    Policy,
     UserInstruction,
 )
 
@@ -25,6 +25,7 @@ class DisputeRequest(BaseModel):
     merchant_name: str
     item_delivered: str
     price_charged: float
+    policy_preset: str = "balanced"  # "lenient" | "balanced" | "strict"
 
 
 @app.get("/health")
@@ -34,6 +35,11 @@ def health():
 
 @app.post("/dispute")
 def dispute(req: DisputeRequest):
+    try:
+        policy = get_policy(req.policy_preset)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     case = DisputeCase(
         case_id=str(uuid.uuid4()),
         user_instruction=UserInstruction(
@@ -54,19 +60,7 @@ def dispute(req: DisputeRequest):
             delivery_sla="standard",
             delivery_actual=req.item_delivered,
         ),
-        policy=Policy(
-            agent_platform_policies=[
-                f"Agent must not exceed user's stated budget of ${req.budget_limit:.2f}",
-                "Agent must purchase only the item the user requested",
-            ],
-            merchant_terms=[
-                "Merchant is responsible for accurate item description and fulfillment",
-            ],
-            consumer_protections=[
-                "Consumer is entitled to a refund if item received differs from item ordered",
-                "Consumer is entitled to a refund if price charged exceeds authorised amount",
-            ],
-        ),
+        policy=policy,
     )
 
     verdict = resolve_dispute(case, verbose=False)
