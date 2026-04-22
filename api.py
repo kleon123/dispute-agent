@@ -4,7 +4,7 @@ from dataclasses import asdict
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from agent import resolve_dispute
+from coordinator import resolve_dispute
 from schemas import (
     AgentLog,
     DisputeCase,
